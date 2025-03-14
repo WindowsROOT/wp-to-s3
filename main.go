@@ -12,16 +12,18 @@ import (
 )
 
 func main() {
-	// โหลด AWS Credentials จาก .env
+	// Load AWS Credentials from .env
 	awsAccessKey := os.Getenv("AWS_ACCESS_KEY_ID")
 	awsSecretKey := os.Getenv("AWS_SECRET_ACCESS_KEY")
 	awsRegion := os.Getenv("AWS_REGION")
 	bucketName := os.Getenv("AWS_S3_BUCKET")
+	uploadDir := os.Getenv("UPLOAD_DIR") // Load upload directory from .env
 
-	// กำหนดโฟลเดอร์ที่ต้องการอัปโหลด
-	uploadDir := "uploads"
+	if uploadDir == "" {
+		log.Fatal("UPLOAD_DIR is not set in .env")
+	}
 
-	// โหลด AWS SDK
+	// Load AWS SDK Config
 	cfg, err := config.LoadDefaultConfig(context.TODO(),
 		config.WithRegion(awsRegion),
 		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(awsAccessKey, awsSecretKey, "")),
@@ -30,16 +32,15 @@ func main() {
 		log.Fatalf("Failed to load AWS config: %v", err)
 	}
 
-	// สร้าง S3 Client
 	s3Client := s3.NewFromConfig(cfg)
 
-	// วนลูปหาไฟล์ทั้งหมดในโฟลเดอร์ uploads
+	// Walk through all files in UPLOAD_DIR
 	err = filepath.WalkDir(uploadDir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		if !d.IsDir() { // อัปโหลดเฉพาะไฟล์ (ไม่รวมโฟลเดอร์)
-			relativePath, _ := filepath.Rel(uploadDir, path) // เอา path โดยไม่รวม "uploads/"
+		if !d.IsDir() { // Upload only files, skip directories
+			relativePath, _ := filepath.Rel(uploadDir, path)
 			err := uploadToS3(s3Client, bucketName, path, relativePath)
 			if err != nil {
 				log.Printf("Failed to upload %s: %v", path, err)
@@ -55,7 +56,6 @@ func main() {
 	}
 }
 
-// ฟังก์ชันอัปโหลดไฟล์ไป S3
 func uploadToS3(client *s3.Client, bucket, filePath, s3Key string) error {
 	file, err := os.Open(filePath)
 	if err != nil {
